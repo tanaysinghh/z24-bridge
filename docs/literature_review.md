@@ -21,7 +21,11 @@ The Z24 bridge was a 60 m post-tensioned concrete box-girder bridge near Bern, S
 
 Classical PDT work uses **operational modal analysis**: identify natural frequencies, damping and mode shapes, then detect and locate damage from changes in modal parameters, modal curvature or flexibility. The pier settlement scenarios, for example, lower the first vertical-bending frequency from about 3.9 Hz to about 3.7 Hz. Data-driven methods (autoencoders, PCA and novelty detection, and more recently 1D CNNs and time-series classifiers) have since been applied directly to the Z24 acceleration records, mostly for binary damage detection or a few damage states. Multi-class identification of all 17 PDT scenarios from raw acceleration is much harder and less studied.
 
-**Project baseline.** The baseline this capstone extends identified damage scenarios with **WaveNet and MiniRocket** on single-channel Z24 acceleration data and reported **60-65 % accuracy**. *[Citation and exact evaluation protocol to be added by the author.]* Comparisons should note the evaluation protocol. As `docs/dataset.md` and `docs/results_review2.md` explain, the records of one setup are contiguous slices of one continuous measurement. Random window-level splits therefore put near-duplicate signal in both train and test and inflate accuracy. This project uses a **setup-held-out split**, which is stricter, so its numbers are not directly comparable with random-split figures.
+**Project baseline.** The baseline this capstone extends identified damage scenarios with **WaveNet and MiniRocket** on single-channel Z24 acceleration data and reported **60-65 % accuracy** (Elios-Lab, Politecnico di Torino, IEEE OJIES 2024 [9]).
+
+*Caveat: [9] evaluated on the Ambient Vibration Test (avt) portion of the Z24 data using 5-class or 15-class subsets, not the full 17-class problem, so its figures are not directly comparable to this project's setup-held-out, 17-class evaluation.*
+
+Comparisons should note the evaluation protocol. As `docs/dataset.md` and `docs/results_review2.md` explain, the records of one setup are contiguous slices of one continuous measurement. Random window-level splits therefore put near-duplicate signal in both train and test and inflate accuracy. This project uses a **setup-held-out split**, which is stricter, so its numbers are not directly comparable with random-split figures.
 
 ## References
 
@@ -33,3 +37,4 @@ Classical PDT work uses **operational modal analysis**: identify natural frequen
 6. C. Krämer, C. A. M. De Smet, G. De Roeck. *Z24 bridge damage detection tests.* Proc. IMAC XVII, 1999.
 7. J. Maeck, G. De Roeck. *Damage assessment using vibration analysis on the Z24-bridge.* Mechanical Systems and Signal Processing 17(1), 2003.
 8. E. Reynders, G. De Roeck. *Continuous vibration monitoring and progressive damage testing on the Z24 bridge.* Encyclopedia of Structural Health Monitoring, Wiley, 2009.
+9. Elios-Lab (Politecnico di Torino). *WaveNet and MiniRocket for Structural Health Monitoring of the Z24 Bridge.* IEEE Open Journal of the Industrial Electronics Society, 2024. DOI: 10.1109/OJIES.2024.3434341
