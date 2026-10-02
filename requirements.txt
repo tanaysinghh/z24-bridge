@@ -1,0 +1,11 @@
+--extra-index-url https://download.pytorch.org/whl/cu124
+torch>=2.5
+numpy>=1.26
+pandas>=2.1
+scipy>=1.11
+scikit-learn>=1.4
+sktime>=0.30
+numba>=0.59
+matplotlib>=3.8
+huggingface_hub>=0.24
+tabulate>=0.9
