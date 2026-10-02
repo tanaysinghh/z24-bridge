@@ -102,7 +102,7 @@ Channel 1 has the highest mean, but its accuracy swings from 0.17 to 0.41 depend
 - a fold-to-fold spread half that of channel 1;
 - a vertical-dominant response.
 
-Vertical response is preferred because pier settlement and tendon rupture act mainly on vertical bending stiffness. Its mode-1 frequency follows the published PDT trend: about 3.84-3.91 Hz in the reference states (labels 0, 1, 7), falling steadily to 3.71 Hz at 95 mm pier settlement (label 5) and recovering once the pier is lifted back.
+Vertical response is preferred because pier settlement and tendon rupture act mainly on vertical bending stiffness. Its mode-1 frequency follows the published PDT trend: about 3.84-3.91 Hz in the reference states (labels 0, 1, 7), dropping to 3.77 Hz at 80 mm and 3.71 Hz at 95 mm pier settlement (labels 4-5) and recovering once the pier is lifted back.
 
 ### 4.4 Development history (for transparency)
 

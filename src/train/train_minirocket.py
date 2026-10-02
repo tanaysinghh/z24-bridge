@@ -4,7 +4,7 @@ import pickle
 import numpy as np
 
 from src.models.minirocket import MiniRocketClassifier
-from src.preprocessing.pipeline import load_processed
+from src.preprocessing.pipeline import load_processed, zscore
 from src.train.common import MODELS_DIR, Timer, evaluate_scores, save_metrics, segment_lookup, set_seed
 
 
@@ -14,15 +14,22 @@ def main():
     parser.add_argument("--num-kernels", type=int, default=10000)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--run-name", default="minirocket")
+    parser.add_argument("--train-stride", type=int, default=None)
     args = parser.parse_args()
 
     set_seed(args.seed)
     data = load_processed(args.data)
+    train_X, train_y = data["train_X"], data["train_y"]
+    if args.train_stride is not None:
+        segs, window = data["train_segments"][:, 0, :], data["train_X"].shape[-1]
+        starts = np.arange(0, segs.shape[1] - window + 1, args.train_stride)
+        train_X = zscore(np.stack([segs[:, s : s + window] for s in starts], axis=1)).reshape(-1, 1, window)
+        train_y = np.repeat(data["train_segment_y"], len(starts))
     clf = MiniRocketClassifier(num_kernels=args.num_kernels, random_state=args.seed)
     with Timer() as timer:
         clf.fit(
-            data["train_X"].astype(np.float64),
-            data["train_y"],
+            train_X.astype(np.float64),
+            train_y,
             data["val_X"].astype(np.float64),
             data["val_y"],
         )

@@ -1,0 +1,12 @@
+{
+  "description": "MiniRocket, segment-grouped stratified random split over setups 1-7 (test setups 8-9 excluded); diagnostic only",
+  "ridge_alpha": 1000.0,
+  "holdout": {
+    "window_acc": 0.323249299719888,
+    "window_macro_f1": 0.3180571047366104,
+    "segment_acc": 0.44537815126050423,
+    "segment_macro_f1": 0.43474363999607213,
+    "n_windows": 1785,
+    "n_segments": 357
+  }
+}
