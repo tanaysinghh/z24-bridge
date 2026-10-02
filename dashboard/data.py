@@ -17,14 +17,14 @@ SEEDS = {"": 42, "_seed1": 1, "_seed2": 2}
 SPLITS = [("train", "Train", "setups 1–6"), ("val", "Validation", "setup 7"), ("test", "Test", "setups 8–9")]
 
 DATASET_FACTS = [
-    ("1963", "Built"),
-    ("60 m", "Bridge length"),
-    ("17", "Damage scenarios"),
-    ("27", "Accelerometers"),
-    ("9", "Sensor setups"),
-    ("1,530", "Recordings"),
-    ("100 Hz", "Sampling rate"),
-    ("60 s", "Per recording"),
+    ("1963", "Built", "Koppigen–Utzenstorf, Switzerland"),
+    ("58 m", "Length", "Spans 14 + 30 + 14 m"),
+    ("17", "Damage scenarios", "Progressive damage tests, 1998"),
+    ("27", "Accelerometers", "Per setup"),
+    ("9", "Sensor setups", "Per scenario"),
+    ("1,530", "Recordings", "17 × 9 × 10"),
+    ("100 Hz", "Sampling rate", "Verified from modal peaks"),
+    ("60 s", "Per recording", "6,000 samples"),
 ]
 
 SHORT_NAMES = [

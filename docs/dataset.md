@@ -5,6 +5,7 @@
 | Item | Value |
 |---|---|
 | Dataset | Z24 Bridge Progressive Damage Tests (KU Leuven), pre-processed mirror |
+| Structure | Z24 Bridge, built 1963, between Koppigen and Utzenstorf near Solothurn, Switzerland. Post-tensioned concrete box girder, 58 m long over three continuous spans of 14 m + 30 m + 14 m (KU Leuven, bwk.kuleuven.be/bwm/z24) |
 | Mirror | https://huggingface.co/datasets/thanglexuan/Z24-dataset-processed |
 | Local path | `data/z24/inputs.npy`, `data/z24/labels.npy` (not tracked by git) |
 | `inputs.npy` | `(1530, 27, 6000)`, float32, 991,440,128 bytes |
