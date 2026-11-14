@@ -47,6 +47,7 @@ def main():
     parser.add_argument("--alpha-mode", choices=["val", "loso"], default="val")
     parser.add_argument("--train-setups", type=int, nargs="+", default=None)
     parser.add_argument("--eval-test", action="store_true")
+    parser.add_argument("--n-jobs", type=int, default=-1)
     args = parser.parse_args()
 
     set_seed(args.seed)
@@ -66,7 +67,7 @@ def main():
     if held_setups:
         splits["oof"] = split_arrays(data, "train", held_setups)
 
-    clf = MiniRocketClassifier(num_kernels=args.num_kernels, random_state=args.seed)
+    clf = MiniRocketClassifier(num_kernels=args.num_kernels, random_state=args.seed, n_jobs=args.n_jobs)
     with Timer() as timer:
         if args.alpha_mode == "val":
             clf.fit(train_X.astype(np.float64), train_y, splits["val"]["X"].astype(np.float64), splits["val"]["y"])

@@ -1,7 +1,7 @@
 import numpy as np
 from sklearn.linear_model import RidgeClassifier
 from sklearn.preprocessing import StandardScaler
-from sktime.transformations.panel.rocket import MiniRocket
+from sktime.transformations.panel.rocket import MiniRocket, MiniRocketMultivariate
 
 
 class MiniRocketClassifier:
@@ -9,6 +9,7 @@ class MiniRocketClassifier:
         self.num_kernels = num_kernels
         self.alphas = np.logspace(-1, 6, 15) if alphas is None else np.asarray(alphas)
         self.random_state = random_state
+        self.n_jobs = n_jobs
         self.transform = MiniRocket(num_kernels=num_kernels, random_state=random_state, n_jobs=n_jobs)
         self.scaler = StandardScaler()
         self.ridge = None
@@ -18,6 +19,8 @@ class MiniRocketClassifier:
         return self.scaler.transform(np.asarray(self.transform.transform(x), dtype=np.float32))
 
     def fit_features(self, x):
+        if x.shape[1] > 1:
+            self.transform = MiniRocketMultivariate(num_kernels=self.num_kernels, random_state=self.random_state, n_jobs=self.n_jobs)
         return self.scaler.fit_transform(np.asarray(self.transform.fit_transform(x), dtype=np.float32))
 
     def fit(self, x, y, x_val=None, y_val=None):

@@ -1,0 +1,185 @@
+import argparse
+import json
+
+import numpy as np
+from scipy.special import logsumexp
+from sklearn.metrics import confusion_matrix, f1_score
+
+from src.ensemble.stack import metrics, segment_logp
+from src.taxonomy import CLASS_NAMES, CLASS_TO_GROUP_INDEX, GROUP_MEMBERS, GROUP_NAMES, N_CLASSES
+from src.train.common import MODELS_DIR, RESULTS_DIR
+
+SEEDS = [42, 1, 2]
+TO_GROUP = np.array(CLASS_TO_GROUP_INDEX)
+
+
+def load_all(run, split):
+    with np.load(MODELS_DIR / run / "preds.npz") as f:
+        return f[f"all_{split}_logp"].astype(np.float64), f[f"all_{split}_window_segment_id"], f[f"all_{split}_y"]
+
+
+def group_marginal(logp17):
+    return np.stack([logsumexp(logp17[:, GROUP_MEMBERS[g]], axis=1) for g in GROUP_NAMES], axis=1)
+
+
+def soft_combine(stage1, stage2):
+    out = np.zeros((stage1.shape[0], N_CLASSES))
+    for gi, g in enumerate(GROUP_NAMES):
+        for local, c in enumerate(GROUP_MEMBERS[g]):
+            out[:, c] = stage1[:, gi] + stage2[g][:, local]
+    return out
+
+
+def hard_route(stage1, stage2, seg):
+    win_group = stage1.argmax(1)
+    win_pred = np.array([GROUP_MEMBERS[GROUP_NAMES[g]][stage2[GROUP_NAMES[g]][i].argmax()] for i, g in enumerate(win_group)])
+    seg_ids, s1 = segment_logp(stage1, seg)
+    seg_group = s1.argmax(1)
+    seg_pred = []
+    for k, sid in enumerate(seg_ids):
+        g = GROUP_NAMES[seg_group[k]]
+        _, s2 = segment_logp(stage2[g][seg == sid], seg[seg == sid])
+        seg_pred.append(GROUP_MEMBERS[g][s2[0].argmax()])
+    return win_pred, seg_ids, np.array(seg_pred), seg_group
+
+
+def hard_metrics(win_pred, seg_ids, seg_pred, y, seg):
+    seg_y = np.array([y[seg == s][0] for s in seg_ids])
+    cm = confusion_matrix(seg_y, seg_pred, labels=np.arange(N_CLASSES))
+    return {
+        "window_acc": float((win_pred == y).mean()),
+        "window_macro_f1": float(f1_score(y, win_pred, average="macro")),
+        "segment_acc": float((seg_pred == seg_y).mean()),
+        "segment_macro_f1": float(f1_score(seg_y, seg_pred, average="macro")),
+        "recall_segment": (cm.diagonal() / np.maximum(cm.sum(1), 1)).tolist(),
+        "confusion_segment": cm.tolist(),
+    }
+
+
+def stage2_oracle(stage2, y, seg):
+    out = {}
+    for g in GROUP_NAMES:
+        members = np.array(GROUP_MEMBERS[g])
+        keep = np.isin(y, members)
+        local_y = np.searchsorted(members, y[keep])
+        m = metrics(stage2[g][keep], local_y, seg[keep], n_classes=len(members))
+        out[g] = {k: m[k] for k in ("window_acc", "segment_acc", "n_windows", "n_segments")}
+        out[g]["chance"] = 1 / len(members)
+    return out
+
+
+def evaluate_seed(arch, seed, flat_method):
+    out = {}
+    with np.load(MODELS_DIR / "final" / f"ensemble_preds_s{seed}.npz") as f:
+        flat = {split: f[f"{split}_{flat_method}"].astype(np.float64) for split in ("val", "test")}
+        flat_seg = {split: f[f"{split}_window_segment_id"] for split in ("val", "test")}
+    for split in ("val", "test"):
+        s1, seg, y = load_all(f"hier/{arch}_group_s{seed}", split)
+        if not np.array_equal(seg, flat_seg[split]):
+            raise ValueError("window order mismatch between hierarchy and ensemble")
+        s2 = {g: load_all(f"hier/{arch}_{g}_s{seed}", split)[0] for g in GROUP_NAMES}
+        gy = TO_GROUP[y]
+        flat_groups = group_marginal(flat[split])
+        res = {
+            "stage1_dedicated": metrics(s1, gy, seg, n_classes=len(GROUP_NAMES)),
+            "stage1_from_flat_ensemble": metrics(flat_groups, gy, seg, n_classes=len(GROUP_NAMES)),
+            "stage2_oracle_routing": stage2_oracle(s2, y, seg),
+            "end_to_end_hard": hard_metrics(*hard_route(s1, s2, seg)[:3], y, seg),
+            "end_to_end_soft": metrics(soft_combine(s1, s2), y, seg),
+            "end_to_end_hard_flat_stage1": hard_metrics(*hard_route(flat_groups, s2, seg)[:3], y, seg),
+            "flat_ensemble": metrics(flat[split], y, seg),
+        }
+        out[split] = res
+    return out
+
+
+def ms(per_seed, split, path, key):
+    vals = []
+    for s in per_seed.values():
+        node = s[split]
+        for p in path:
+            node = node[p]
+        vals.append(node[key])
+    v = np.array(vals) * 100
+    return float(v.mean()), float(v.std())
+
+
+def fmt(t):
+    return f"{t[0]:.1f} +- {t[1]:.1f}"
+
+
+def write_markdown(report):
+    ps = report["per_seed"]
+    rows = [
+        ("Stage 1, dedicated group classifier (5 classes)", ["stage1_dedicated"]),
+        ("Stage 1, group marginal of the flat ensemble", ["stage1_from_flat_ensemble"]),
+        ("End-to-end, hard routing (primary)", ["end_to_end_hard"]),
+        ("End-to-end, soft P(group) x P(scenario | group)", ["end_to_end_soft"]),
+        ("End-to-end, flat-ensemble Stage 1 + specialists", ["end_to_end_hard_flat_stage1"]),
+        ("Flat ensemble (17 classes)", ["flat_ensemble"]),
+    ]
+    lines = [
+        "# Hierarchical classifier results",
+        "",
+        f"Generated by `python -m src.hierarchy.evaluate`. Architecture: {report['architecture']}. Mean +- std over seeds {', '.join(ps)}. "
+        "Stage 1 predicts the damage group; Stage 2 is one specialist per group trained only on that group's scenarios. All models were trained on setups 1-6 with checkpoints chosen on setup 7.",
+        "",
+        "| Group | Scenarios |",
+        "|---|---|",
+    ]
+    for g in GROUP_NAMES:
+        lines.append(f"| {g} | " + ", ".join(f"{c} {CLASS_NAMES[c]}" for c in GROUP_MEMBERS[g]) + " |")
+    lines += ["", "## Accuracy (%)", "", "| Level | Val window | Val recording | Test window | Test recording |", "|---|---|---|---|---|"]
+    for label, path in rows:
+        cells = [fmt(ms(ps, sp, path, k)) for sp in ("val", "test") for k in ("window_acc", "segment_acc")]
+        lines.append(f"| {label} | " + " | ".join(cells) + " |")
+    lines += ["", "## Stage 2 accuracy per group with correct routing (%)", "", "| Group | Classes | Chance | Val recording | Test window | Test recording |", "|---|---|---|---|---|---|"]
+    for g in GROUP_NAMES:
+        path = ["stage2_oracle_routing", g]
+        lines.append(
+            f"| {g} | {len(GROUP_MEMBERS[g])} | {100 / len(GROUP_MEMBERS[g]):.0f} | {fmt(ms(ps, 'val', path, 'segment_acc'))} | "
+            f"{fmt(ms(ps, 'test', path, 'window_acc'))} | {fmt(ms(ps, 'test', path, 'segment_acc'))} |"
+        )
+    lines += ["", "## Comparison with the flat ensemble", "", report["comparison_text"], ""]
+    (RESULTS_DIR / "hierarchical.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--arch", default="wavenet")
+    args = parser.parse_args()
+    ensemble = json.loads((RESULTS_DIR / "ensemble.json").read_text())
+    flat_method = ensemble["primary_method"]
+    per_seed = {str(s): evaluate_seed(args.arch, s, flat_method) for s in SEEDS}
+    h = ms(per_seed, "test", ["end_to_end_hard"], "segment_acc")
+    f = ms(per_seed, "test", ["flat_ensemble"], "segment_acc")
+    s1 = ms(per_seed, "test", ["stage1_dedicated"], "segment_acc")
+    s1f = ms(per_seed, "test", ["stage1_from_flat_ensemble"], "segment_acc")
+    text = (
+        f"On the test setups the hierarchical classifier reaches {h[0]:.1f}% recording accuracy end to end, against {f[0]:.1f}% for the flat ensemble "
+        f"({h[0] - f[0]:+.1f} points). Its dedicated Stage 1 identifies the damage group for {s1[0]:.1f}% of recordings, while the group implied by the flat ensemble is right for {s1f[0]:.1f}%."
+    )
+    report = {
+        "architecture": args.arch,
+        "flat_method": flat_method,
+        "groups": GROUP_MEMBERS,
+        "per_seed": per_seed,
+        "summary": {
+            name: {f"{sp}_{k}": ms(per_seed, sp, [name], k) for sp in ("val", "test") for k in ("window_acc", "segment_acc")}
+            for name in ("stage1_dedicated", "stage1_from_flat_ensemble", "end_to_end_hard", "end_to_end_soft", "end_to_end_hard_flat_stage1", "flat_ensemble")
+        },
+        "stage2_summary": {
+            g: {f"{sp}_{k}": ms(per_seed, sp, ["stage2_oracle_routing", g], k) for sp in ("val", "test") for k in ("window_acc", "segment_acc")}
+            for g in GROUP_NAMES
+        },
+        "comparison_text": text,
+    }
+    (RESULTS_DIR / "hierarchical.json").write_text(json.dumps(report, indent=2))
+    write_markdown(report)
+    print(text)
+    for k, v in report["summary"].items():
+        print(k, {a: f"{b[0]:.1f}" for a, b in v.items()})
+
+
+if __name__ == "__main__":
+    main()
