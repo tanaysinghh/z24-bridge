@@ -20,6 +20,7 @@ SEGMENT_LEN = 6000
 @dataclass
 class PreprocessConfig:
     channel: int = 22
+    channels: list = None
     fs: float = 100.0
     band_low: float = 0.5
     band_high: float = 30.0
@@ -31,8 +32,21 @@ class PreprocessConfig:
     test_setups: list = field(default_factory=lambda: [8, 9])
 
     @property
+    def channel_list(self):
+        return list(self.channels) if self.channels else [self.channel]
+
+    @property
+    def channel_tag(self):
+        chans = self.channel_list
+        if len(chans) == 1:
+            return str(chans[0])
+        if chans == list(range(chans[0], chans[-1] + 1)):
+            return f"{chans[0]}-{chans[-1]}"
+        return "_".join(str(c) for c in chans)
+
+    @property
     def name(self):
-        return f"z24_ch{self.channel}_w{self.window}_s{self.stride}"
+        return f"z24_ch{self.channel_tag}_w{self.window}_s{self.stride}"
 
 
 def load_raw(raw_dir=RAW_DIR):
@@ -54,16 +68,22 @@ def sample_index():
     }
 
 
-def select_channel(inputs, channel):
-    return np.asarray(inputs[:, channel, :], dtype=np.float64)
+def select_channels(inputs, channels):
+    return np.asarray(inputs[:, channels, :], dtype=np.float64)
+
+
+def bandpass_sos(cfg):
+    return butter(cfg.filter_order, [cfg.band_low, cfg.band_high], btype="bandpass", fs=cfg.fs, output="sos")
 
 
 def bandpass_records(segments, cfg):
-    sos = butter(cfg.filter_order, [cfg.band_low, cfg.band_high], btype="bandpass", fs=cfg.fs, output="sos")
-    records = segments.reshape(N_SCENARIOS * N_SETUPS, N_SEGMENTS * SEGMENT_LEN)
-    records = records - records.mean(axis=1, keepdims=True)
-    filtered = sosfiltfilt(sos, records, axis=1)
-    return filtered.reshape(-1, SEGMENT_LEN)
+    n_ch = segments.shape[1]
+    records = segments.reshape(N_SCENARIOS * N_SETUPS, N_SEGMENTS, n_ch, SEGMENT_LEN)
+    records = records.transpose(0, 2, 1, 3).reshape(N_SCENARIOS * N_SETUPS, n_ch, N_SEGMENTS * SEGMENT_LEN)
+    records = records - records.mean(axis=-1, keepdims=True)
+    filtered = sosfiltfilt(bandpass_sos(cfg), records, axis=-1)
+    filtered = filtered.reshape(N_SCENARIOS * N_SETUPS, n_ch, N_SEGMENTS, SEGMENT_LEN).transpose(0, 2, 1, 3)
+    return filtered.reshape(-1, n_ch, SEGMENT_LEN)
 
 
 def zscore(x, axis=-1, eps=1e-8):
@@ -78,7 +98,7 @@ def window_starts(cfg):
 
 def make_windows(segments, cfg):
     starts = window_starts(cfg)
-    windows = np.stack([segments[:, s : s + cfg.window] for s in starts], axis=1)
+    windows = np.stack([segments[:, :, s : s + cfg.window] for s in starts], axis=1)
     return zscore(windows), starts
 
 
@@ -95,18 +115,18 @@ def build(cfg, raw_dir=RAW_DIR, out_dir=PROCESSED_DIR):
     meta = sample_index()
     if not np.array_equal(labels, meta["scenario"]):
         raise ValueError("labels do not follow scenario-major ordering")
-    segments = bandpass_records(select_channel(inputs, cfg.channel), cfg)
+    segments = bandpass_records(select_channels(inputs, cfg.channel_list), cfg)
     windows, starts = make_windows(segments, cfg)
-    n_win = windows.shape[1]
+    n_win, n_ch = windows.shape[1], windows.shape[2]
     masks = split_masks(meta["setup"], cfg)
 
     arrays = {}
     for split, mask in masks.items():
         seg_ids = np.flatnonzero(mask)
-        arrays[f"{split}_segments"] = segments[mask][:, None, :].astype(np.float32)
+        arrays[f"{split}_segments"] = segments[mask].astype(np.float32)
         arrays[f"{split}_segment_y"] = labels[mask].astype(np.int64)
         arrays[f"{split}_segment_id"] = seg_ids
-        arrays[f"{split}_X"] = windows[mask].reshape(-1, 1, cfg.window).astype(np.float32)
+        arrays[f"{split}_X"] = windows[mask].reshape(-1, n_ch, cfg.window).astype(np.float32)
         arrays[f"{split}_y"] = np.repeat(labels[mask], n_win).astype(np.int64)
         arrays[f"{split}_window_segment_id"] = np.repeat(seg_ids, n_win)
         arrays[f"{split}_setup"] = np.repeat(meta["setup"][mask], n_win)
@@ -135,10 +155,11 @@ def load_processed(name="z24_ch22_w2000_s1000", out_dir=PROCESSED_DIR):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--channel", type=int, default=22)
+    parser.add_argument("--channels", type=int, nargs="+", default=None)
     parser.add_argument("--window", type=int, default=2000)
     parser.add_argument("--stride", type=int, default=1000)
     args = parser.parse_args()
-    cfg = PreprocessConfig(channel=args.channel, window=args.window, stride=args.stride)
+    cfg = PreprocessConfig(channel=args.channel, channels=args.channels, window=args.window, stride=args.stride)
     out_path, summary = build(cfg)
     print(out_path)
     print(json.dumps(summary, indent=2))

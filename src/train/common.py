@@ -30,7 +30,7 @@ def segment_scores(window_scores, window_segment_id):
     return seg_ids, summed
 
 
-def evaluate_scores(scores, y, window_segment_id, segment_y_lookup):
+def evaluate_scores(scores, y, window_segment_id, segment_y_lookup, n_classes=17):
     pred = scores.argmax(axis=1)
     seg_ids, seg_scores = segment_scores(scores, window_segment_id)
     seg_pred = seg_scores.argmax(axis=1)
@@ -42,7 +42,7 @@ def evaluate_scores(scores, y, window_segment_id, segment_y_lookup):
         "segment_macro_f1": float(f1_score(seg_true, seg_pred, average="macro")),
         "n_windows": int(len(y)),
         "n_segments": int(len(seg_ids)),
-        "confusion_segment": confusion_matrix(seg_true, seg_pred, labels=np.arange(17)).tolist(),
+        "confusion_segment": confusion_matrix(seg_true, seg_pred, labels=np.arange(n_classes)).tolist(),
     }
 
 
@@ -53,6 +53,7 @@ def segment_lookup(data, split):
 def save_metrics(model_name, payload):
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     path = RESULTS_DIR / f"{model_name}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2))
     return path
 

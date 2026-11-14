@@ -17,8 +17,11 @@ class MiniRocketClassifier:
     def features(self, x):
         return self.scaler.transform(np.asarray(self.transform.transform(x), dtype=np.float32))
 
+    def fit_features(self, x):
+        return self.scaler.fit_transform(np.asarray(self.transform.fit_transform(x), dtype=np.float32))
+
     def fit(self, x, y, x_val=None, y_val=None):
-        feats = self.scaler.fit_transform(np.asarray(self.transform.fit_transform(x), dtype=np.float32))
+        feats = self.fit_features(x)
         if x_val is None:
             self.ridge = RidgeClassifier(alpha=float(np.median(self.alphas))).fit(feats, y)
             return self

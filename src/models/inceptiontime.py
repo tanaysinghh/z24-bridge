@@ -43,6 +43,7 @@ class InceptionTime(nn.Module):
         bottleneck_channels=38,
         depth=6,
         residual_every=3,
+        dropout=0.0,
     ):
         super().__init__()
         out_channels = n_filters * (len(kernel_sizes) + 1)
@@ -57,6 +58,7 @@ class InceptionTime(nn.Module):
             if d % residual_every == residual_every - 1:
                 self.shortcuts.append(Shortcut(residual_channels, out_channels))
                 residual_channels = out_channels
+        self.dropout = nn.Dropout(dropout)
         self.head = nn.Linear(out_channels, num_classes)
 
     def forward(self, x):
@@ -68,4 +70,4 @@ class InceptionTime(nn.Module):
                 x = self.shortcuts[shortcut_idx](x, residual)
                 residual = x
                 shortcut_idx += 1
-        return self.head(x.mean(dim=-1))
+        return self.head(self.dropout(x.mean(dim=-1)))
